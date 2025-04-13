@@ -1,15 +1,62 @@
 import * as PIXI from 'pixi.js';
 
+const connectToServer = (): WebSocket => {
+  const socket = new WebSocket("ws://localhost:8080/ws"); // TODO: Replace.
+
+  socket.onopen = () => console.log("Connected to server");
+  socket.onerror = (err) => console.error("WebSocket error:", err);
+
+  return socket;
+}
+
+function setupInput(send: (data: string) => void) {
+  window.addEventListener('keydown', (e) => {
+    const key = e.key.toLowerCase();
+    if (['w', 'a', 's', 'd'].includes(key)) {
+      const message = key;
+      send(JSON.stringify(message));
+    }
+  });
+}
+
 const app = new PIXI.Application();
-await app.init({ width: 800, height: 600 })
+app.init({ background: '#1099bb', width: 800, height: 600 })
 document.body.appendChild(app.canvas);
 
-await PIXI.Assets.load('sprite.png');
-let sprite = PIXI.Sprite.from('sprite.png');
-app.stage.addChild(sprite);
+type Posn = {
+  x: number;
+  y: number;
+}
 
-let elapsed = 0.0;
-app.ticker.add((ticker) => {
-  elapsed += ticker.deltaTime;
-  sprite.x = 100.0 + Math.cos(elapsed/50.0) * 100.0;
+type GameState = {
+  circles: Posn[];
+}
+
+let gameState: GameState = {
+  circles: [{x: 50, y: 50}]
+}
+
+const circleRadius: number = 25;
+
+app.ticker.add(() => {
+  app.stage.removeChildren();
+  const graphics = new PIXI.Graphics();
+  gameState.circles.forEach(({x, y}) => graphics.circle(x, y, circleRadius))
+  app.stage.addChild(graphics);
 });
+
+function startGame() {
+  const socket = connectToServer();
+  setupInput((data) => {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(data);
+    }
+  });
+
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    gameState = data;
+  };
+}
+
+startGame();
