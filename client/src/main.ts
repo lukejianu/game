@@ -1,62 +1,54 @@
-import * as PIXI from 'pixi.js';
+import * as PIXI from "pixi.js";
+
+import { GameState } from "../../common/src/data";
+import { serialize, deserialize } from "../../common/src/transport";
+
+const gameServerPort = 8080;
+let gameState: GameState = new Map();
+
+const main = async () => {
+  const conn = connectToServer();
+  await setupGraphics();
+  registerKeyListeners(conn);
+  conn.onmessage = (msg) => {
+    const newState: GameState = new Map(Object.entries(deserialize(msg.data)))
+    gameState = newState;
+  };
+};
 
 const connectToServer = (): WebSocket => {
-  const socket = new WebSocket("ws://localhost:8080/ws"); // TODO: Replace.
-
+  const socket = new WebSocket(`ws://localhost:${gameServerPort}/ws`);
   socket.onopen = () => console.log("Connected to server");
   socket.onerror = (err) => console.error("WebSocket error:", err);
-
   return socket;
-}
+};
 
-function setupInput(send: (data: string) => void) {
-  window.addEventListener('keydown', (e) => {
+const registerKeyListeners = (conn: WebSocket): void => {
+  window.addEventListener("keydown", (e) => {
     const key = e.key.toLowerCase();
-    if (['w', 'a', 's', 'd'].includes(key)) {
-      const message = key;
-      send(JSON.stringify(message));
+    if (["a", "d"].includes(key)) {
+      conn.send(serialize(key));
     }
   });
-}
+};
 
-const app = new PIXI.Application();
-app.init({ background: '#1099bb', width: 800, height: 600 })
-document.body.appendChild(app.canvas);
+const setupGraphics = async (): Promise<void> => {
+  const circleRadius: number = 20;
 
-type Posn = {
-  x: number;
-  y: number;
-}
+  const app = new PIXI.Application();
+  await app.init({ background: 'grey', width: 400, height: circleRadius * 2 });
+  document.body.appendChild(app.canvas);
 
-type GameState = {
-  circles: Posn[];
-}
+  const y = 20;
 
-let gameState: GameState = {
-  circles: [{x: 50, y: 50}]
-}
-
-const circleRadius: number = 25;
-
-app.ticker.add(() => {
-  app.stage.removeChildren();
-  const graphics = new PIXI.Graphics();
-  gameState.circles.forEach(({x, y}) => graphics.circle(x, y, circleRadius))
-  app.stage.addChild(graphics);
-});
-
-function startGame() {
-  const socket = connectToServer();
-  setupInput((data) => {
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(data);
-    }
+  app.ticker.add(() => {
+    app.stage.removeChildren();
+    const graphics = new PIXI.Graphics();
+    gameState.forEach((x, _id) =>
+      graphics.circle(x, y, circleRadius).fill( {color: 'red'} )
+    );
+    app.stage.addChild(graphics);
   });
+};
 
-  socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    gameState = data;
-  };
-}
-
-startGame();
+await main();
