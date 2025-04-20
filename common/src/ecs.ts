@@ -200,7 +200,7 @@ export class ECS {
     // Update all systems. (Later, we'll add a way to specify the
     // update order.)
     for (let [system, entities] of this.systems.entries()) {
-      system.update(entities);
+      system.update(new Set(entities)); // Bruh.
     }
 
     // Remove any entities that were marked for deletion during the
