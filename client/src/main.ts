@@ -29,7 +29,7 @@ class ServerIdComponent extends Component {
 }
 
 class ClientInputComponent extends Component {
-  constructor(public keys: string[]) {
+  constructor(public keys: [number, string][]) {
     super();
   }
 }
@@ -59,13 +59,15 @@ class MovementSystem extends System {
 
 class LocalInputSystem extends System {
   public componentsRequired = new Set([]);
+  private nextInputSeqNum: number = 0
 
   constructor(clientInputCom: ClientInputComponent) {
     super();
     window.addEventListener("keydown", (e) => {
       const key = e.key.toLowerCase();
       if (["a", "d"].includes(key)) {
-        clientInputCom.keys.push(key);
+        clientInputCom.keys.push([this.nextInputSeqNum, key]);
+        this.nextInputSeqNum++;
       }
     });
   }
@@ -95,10 +97,11 @@ class NetworkReceiveSystem extends System {
       if (!serverStateCom) {
         this.ecs.addComponent(
           this.localEntityId,
-          new ServerStateComponent(gs.p)
+          new ServerStateComponent(gs.p[1])
         );
       } else {
-        serverStateCom.x = gs.p;
+        console.log(gs.p);
+        serverStateCom.x = gs.p[1];
       }
 
       // Update remote players.

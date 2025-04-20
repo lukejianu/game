@@ -21,11 +21,9 @@ class PositionComponent extends Component {
 }
 
 class InputComponent extends Component {
-  public inputs: string[];
 
-  constructor(inputs: string[]) {
+  constructor(public inputs: [number, string][], public lastAppliedInputSeqId: number) {
     super();
-    this.inputs = inputs;
   }
 }
 
@@ -57,9 +55,10 @@ class MovementSystem extends System {
       const others = positions.difference(new Set([posCom.x]));
       const x = posCom.x;
       const inputs = inputCom.inputs;
-      const newX = inputs.reduce((acc, i) => this.handleInput(acc, i, others), x);
+      const newX = inputs.reduce((acc, [_seqId, key]) => this.handleInput(acc, key, others), x);
       posCom.x = newX;
       inputCom.inputs = [];
+      inputCom.lastAppliedInputSeqId = (inputs.length === 0) ? inputCom.lastAppliedInputSeqId : inputs.pop()![0];
     });
   }
 
@@ -89,20 +88,22 @@ class BroadcastSystem extends System {
   public componentsRequired: Set<Function> = new Set([
     PositionComponent,
     ConnectionComponent,
+    InputComponent
   ]);
 
   public update(entities: Set<Entity>): void {
     const positions: Map<Entity, Position> = new Map(
       [...entities].map((e) => [
         e,
-        this.ecs.getComponents(e).get(PositionComponent).x,
+        this.ecs.getComponents(e).get(PositionComponent).x
       ])
     );
     entities.forEach((e) => {
       const cs = this.ecs.getComponents(e);
       const posCom = cs.get(PositionComponent);
       const conCom = cs.get(ConnectionComponent);
-      const gs = this.mkGameState(e, posCom.x, positions);
+      const inputCom = cs.get(InputComponent);
+      const gs = this.mkGameState(e, posCom.x, inputCom.lastAppliedInputSeqId, positions);
       conCom.socket.send(serializeGameState(gs));
     });
   }
@@ -110,12 +111,13 @@ class BroadcastSystem extends System {
   private mkGameState = (
     e: Entity,
     p: Position,
+    lastSeqId: number,
     m: Map<Entity, Position>
   ): GameState => {
     const mCopy = new Map(m);
     mCopy.delete(e);
     return {
-      p,
+      p: [lastSeqId, p],
       others: mCopy,
     };
   };
@@ -131,7 +133,7 @@ const main = () => {
 
   wss.on("connection", (ws: WebSocket) => {
     const newEntity = ecs.addEntity();
-    const inputComponent = new InputComponent([]);
+    const inputComponent = new InputComponent([], -1);
     ecs.addComponent(newEntity, new PositionComponent(startState));
     ecs.addComponent(newEntity, inputComponent);
     ecs.addComponent(newEntity, new ConnectionComponent(ws));

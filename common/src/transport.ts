@@ -14,7 +14,9 @@ export const serializeGameState = (gs: GameState): string => {
 export const deserializeGameState = (msg: string): GameState => {
   const obj = deserializeFromJson(msg);
   return {
-    p: obj['p'],
-    others: new Map(Object.entries(obj['others']).map(([x, y]) => [parseInt(x), y as Position]))
-  }
+    p: obj["p"],
+    others: new Map(
+      Object.entries(obj["others"]).map(([k, x]) => [parseInt(k), x as Position])
+    ),
+  };
 };
