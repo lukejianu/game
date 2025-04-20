@@ -45,27 +45,43 @@ class MovementSystem extends System {
   ]);
 
   public update(entities: Set<Entity>): void {
+    const positions = new Set([...entities].map(e => {
+      const cs = this.ecs.getComponents(e);
+      const posCom = cs.get(PositionComponent);
+      return posCom.x;
+    }));
     entities.forEach((e) => {
       const cs = this.ecs.getComponents(e);
       const posCom = cs.get(PositionComponent);
       const inputCom = cs.get(InputComponent);
+      const others = positions.difference(new Set([posCom.x]));
       const x = posCom.x;
       const inputs = inputCom.inputs;
-      const newX = inputs.reduce((acc, i) => this.handleInput(acc, i), x);
+      const newX = inputs.reduce((acc, i) => this.handleInput(acc, i, others), x);
       posCom.x = newX;
       inputCom.inputs = [];
     });
   }
 
-  private handleInput = (p: Position, key: string): Position => {
+  private handleInput = (
+    position: number,
+    key: string,
+    others: Set<number>,
+  ): number => {
+    const radius = 20; // TODO: Pull into common.
     const step = 5;
-    if (key === "a") {
-      return p - step;
-    } else if (key === "d") {
-      return p + step;
-    } else {
-      throw Error("Unsupported input!");
+    const deltas: Record<string, number> = { a: -step, d: +step };
+  
+    const delta = deltas[key];
+    if (delta === undefined) {
+      throw new Error(`Unsupported input: ${key}`);
     }
+  
+    const next = position + delta;
+    const wouldCollide = Array.from(others)
+      .some(other => Math.abs(other - next) < 2 * radius);
+    
+    return wouldCollide ? position : next;
   };
 }
 
