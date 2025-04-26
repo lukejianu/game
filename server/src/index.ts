@@ -80,7 +80,7 @@ class MovementSystem extends System {
     const wouldCollide = Array.from(others)
       .some(other => Math.abs(other - next) < 2 * radius);
     
-    return wouldCollide ? position : next;
+    return next; // Disable collisions.
   };
 }
 

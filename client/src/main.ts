@@ -13,7 +13,7 @@ import {
   ComponentContainer,
 } from "../../common/src/ecs";
 
-const updatesPerSecond = 6;
+const updatesPerSecond = 60;
 const timeStepMs = 1000 / updatesPerSecond;
 
 class PositionComponent extends Component {
@@ -35,12 +35,12 @@ class ClientInputComponent extends Component {
 }
 
 class ServerStateComponent extends Component {
-  constructor(public x: number) {
+  constructor(public lastX: number | undefined, public lastXUpdateTs: number | undefined, public newX: number, public newXUpdateTs: number) {
     super();
   }
 }
 
-class MovementSystem extends System {
+class RemoteMovementSystem extends System {
   public componentsRequired: Set<Function> = new Set([ServerStateComponent]);
 
   public update(entities: Set<Entity>): void {
@@ -49,11 +49,50 @@ class MovementSystem extends System {
       const posCom = coms.get(PositionComponent);
       const serverInputCom = coms.get(ServerStateComponent);
       if (!posCom) {
-        this.ecs.addComponent(e, new PositionComponent(serverInputCom.x));
+        this.ecs.addComponent(e, new PositionComponent(serverInputCom.newX));
+      } else if (coms.get(ClientInputComponent)) {
+        // TODO: Reconcile.
+      } else if (!serverInputCom.lastX) {
+        posCom.x = serverInputCom.newX;
       } else {
-        posCom.x = serverInputCom.x;
+        // This is probably a horrible failure of Elementary School Physics. 
+        const now = Date.now();
+        const gap = serverInputCom.newXUpdateTs - serverInputCom.lastXUpdateTs!;
+        const dt = now - serverInputCom.newXUpdateTs!;
+        const dx = (serverInputCom.newX - serverInputCom.lastX);
+        if (gap === 0 || dx === 0) {
+          posCom.x = serverInputCom.newX;
+        } else {
+          const progThroughGap = dt / gap;
+          const x = serverInputCom.lastX + (dx * progThroughGap);
+          posCom.x = x;
+        }
       }
     });
+  }
+}
+
+class LocalMovementSystem extends System {
+  public componentsRequired: Set<Function> = new Set([PositionComponent, ClientInputComponent]);
+
+  public update(entities: Set<Entity>): void {
+    entities.forEach((e) => {
+      const coms = this.ecs.getComponents(e);
+      const posCom = coms.get(PositionComponent);
+      const clientInputCom = coms.get(ClientInputComponent);
+      const newX = clientInputCom.keys.reduce((acc, [_, key]) => acc + this.keyToMove(key), posCom.x)
+      posCom.x = newX;
+    });
+  }
+
+  private keyToMove(key: string): number {
+    // TODO: Eventually, use the server's logic for this (share).
+    const step = 5; // TODO: Don't dupe constants.
+    if (key === 'd') {
+      return step;
+    } else {
+      return -step;
+    }
   }
 }
 
@@ -92,30 +131,36 @@ class NetworkReceiveSystem extends System {
       .getComponents(this.localEntityId)
       .get(ServerStateComponent);
     const serverEntities = _entities;
+    const ts = Date.now();
     this.gsBuf.forEach((gs) => {
       // Update local player.
       if (!serverStateCom) {
         this.ecs.addComponent(
           this.localEntityId,
-          new ServerStateComponent(gs.p[1])
+          new ServerStateComponent(undefined, undefined, gs.p[1], ts)
         );
       } else {
-        console.log(gs.p);
-        serverStateCom.x = gs.p[1];
+        serverStateCom.lastX = serverStateCom.newX;
+        serverStateCom.lastXUpdateTs = serverStateCom.newXUpdateTs;
+        serverStateCom.newX = gs.p[1];
+        serverStateCom.newXUpdateTs = ts;
       }
 
       // Update remote players.
       gs.others.forEach((x, serverId) => {
         const isNewNew = this.findEntityId(serverId, serverEntities) === -1;
         if (isNewNew) {
-          const newEntity = this.createNewRemotePlayer(x, serverId);
+          const newEntity = this.createNewRemotePlayer(x, serverId, ts);
           serverEntities.add(newEntity);
         } else {
           const e = this.findEntityId(serverId, serverEntities);
           const serverStateCom = this.ecs
             .getComponents(e)
             .get(ServerStateComponent);
-          serverStateCom.x = x;
+          serverStateCom.lastX = serverStateCom.newX;
+          serverStateCom.lastXUpdateTs = serverStateCom.newXUpdateTs;
+          serverStateCom.newX = x;
+          serverStateCom.newXUpdateTs = ts;
         }
       });
     });
@@ -136,9 +181,9 @@ class NetworkReceiveSystem extends System {
     this.gsBuf = [];
   }
 
-  private createNewRemotePlayer(x: number, serverId: number): Entity {
+  private createNewRemotePlayer(x: number, serverId: number, ts: number): Entity {
     const entityId = this.ecs.addEntity();
-    this.ecs.addComponent(entityId, new ServerStateComponent(x));
+    this.ecs.addComponent(entityId, new ServerStateComponent(undefined, undefined, x, ts));
     this.ecs.addComponent(entityId, new ServerIdComponent(serverId));
     return entityId;
   }
@@ -239,9 +284,10 @@ const main = async () => {
 
   ecs.addSystem(await createRenderSystem());
   ecs.addSystem(new LocalInputSystem(clientInputCom));
+  ecs.addSystem(new LocalMovementSystem());
   ecs.addSystem(new NetworkSendSystem(conn));
   ecs.addSystem(new NetworkReceiveSystem(id, conn));
-  ecs.addSystem(new MovementSystem());
+  ecs.addSystem(new RemoteMovementSystem());
 
   setInterval(() => ecs.update(), timeStepMs);
 };
