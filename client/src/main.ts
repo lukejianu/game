@@ -299,16 +299,17 @@ const main = async () => {
 };
 
 const connectToServer = (): WebSocket => {
-  const socket = new WebSocket(remoteUrl);
+  const prod = import.meta.env.DEV === false;
+  const gameServerPort = 8080;
+  const localUrl = `ws://localhost:${gameServerPort}/ws`;
+  const ngrokHost = "sturgeon-exciting-firmly.ngrok-free.app";
+  const remoteUrl = `wss://${ngrokHost}/ws`;
+  const url = prod ? remoteUrl : localUrl;
+  const socket = new WebSocket(url);
   socket.onopen = () => console.log("Connected to server");
   socket.onerror = (err) => console.error("WebSocket error:", err);
   return socket;
 };
-
-const gameServerPort = 8080;
-const localUrl = `ws://localhost:${gameServerPort}/ws`;
-const ngrokHost = "sturgeon-exciting-firmly.ngrok-free.app";
-const remoteUrl = `wss://${ngrokHost}/ws`;
 
 const createRenderSystem = async (): Promise<RenderSystem> => {
   const circleRadius: number = 20;
