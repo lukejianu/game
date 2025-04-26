@@ -321,4 +321,4 @@ const createRenderSystem = async (): Promise<RenderSystem> => {
   return new RenderSystem(app, y, circleRadius);
 };
 
-await main();
+main();
