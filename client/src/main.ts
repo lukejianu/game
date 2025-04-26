@@ -51,7 +51,7 @@ class RemoteMovementSystem extends System {
       if (!posCom) {
         this.ecs.addComponent(e, new PositionComponent(serverInputCom.newX));
       } else if (coms.get(ClientInputComponent)) {
-        // TODO: Reconcile.
+        // Do nothing?
       } else if (!serverInputCom.lastX) {
         posCom.x = serverInputCom.newX;
       } else {
@@ -77,6 +77,12 @@ class LocalMovementSystem extends System {
 
   public update(entities: Set<Entity>): void {
     entities.forEach((e) => {
+      // TODO: Implement reconciliation.
+      /*
+      1. Check to see if we predicted correctly.
+      2. If not, see the last input the server acknowledged, and grab all the inputs we did afterwards.
+      3. Compute the newX based on the server's new state and all of our inputs since then.
+      */
       const coms = this.ecs.getComponents(e);
       const posCom = coms.get(PositionComponent);
       const clientInputCom = coms.get(ClientInputComponent);
@@ -293,12 +299,16 @@ const main = async () => {
 };
 
 const connectToServer = (): WebSocket => {
-  const gameServerPort = 8080;
-  const socket = new WebSocket(`ws://localhost:${gameServerPort}/ws`);
+  const socket = new WebSocket(remoteUrl);
   socket.onopen = () => console.log("Connected to server");
   socket.onerror = (err) => console.error("WebSocket error:", err);
   return socket;
 };
+
+const gameServerPort = 8080;
+const localUrl = `ws://localhost:${gameServerPort}/ws`;
+const ngrokHost = "sturgeon-exciting-firmly.ngrok-free.app";
+const remoteUrl = `wss://${ngrokHost}/ws`;
 
 const createRenderSystem = async (): Promise<RenderSystem> => {
   const circleRadius: number = 20;
