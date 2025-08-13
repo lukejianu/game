@@ -1,325 +1,68 @@
 import * as PIXI from "pixi.js";
 
-import { GameState } from "../../common/src/data";
-import {
-  deserializeGameState,
-  serializeToJson,
-} from "../../common/src/transport";
-import {
-  ECS,
-  Entity,
-  Component,
-  System,
-  ComponentContainer,
-} from "../../common/src/ecs";
+const CANVAS_WIDTH = 400;
+const CIRCLE_RADIUS = 20;
+const MY_CIRCLE_COLOR = 'red';
+const OTHER_CIRCLE_COLOR = 'blue'; // TODO: Use this.
 
-const updatesPerSecond = 60;
-const timeStepMs = 1000 / updatesPerSecond;
-
-class PositionComponent extends Component {
-  constructor(public x: number) {
-    super();
-  }
-}
-
-class ServerIdComponent extends Component {
-  constructor(public id: number) {
-    super();
-  }
-}
-
-class ClientInputComponent extends Component {
-  constructor(public keys: [number, string][]) {
-    super();
-  }
-}
-
-class ServerStateComponent extends Component {
-  constructor(public lastX: number | undefined, public lastXUpdateTs: number | undefined, public newX: number, public newXUpdateTs: number) {
-    super();
-  }
-}
-
-class RemoteMovementSystem extends System {
-  public componentsRequired: Set<Function> = new Set([ServerStateComponent]);
-
-  public update(entities: Set<Entity>): void {
-    entities.forEach((e) => {
-      const coms = this.ecs.getComponents(e);
-      const posCom = coms.get(PositionComponent);
-      const serverInputCom = coms.get(ServerStateComponent);
-      if (!posCom) {
-        this.ecs.addComponent(e, new PositionComponent(serverInputCom.newX));
-      } else if (coms.get(ClientInputComponent)) {
-        // Do nothing?
-      } else if (!serverInputCom.lastX) {
-        posCom.x = serverInputCom.newX;
-      } else {
-        // This is probably a horrible failure of Elementary School Physics. 
-        const now = Date.now();
-        const gap = serverInputCom.newXUpdateTs - serverInputCom.lastXUpdateTs!;
-        const dt = now - serverInputCom.newXUpdateTs!;
-        const dx = (serverInputCom.newX - serverInputCom.lastX);
-        if (gap === 0 || dx === 0) {
-          posCom.x = serverInputCom.newX;
-        } else {
-          const progThroughGap = dt / gap;
-          const x = serverInputCom.lastX + (dx * progThroughGap);
-          posCom.x = x;
-        }
-      }
-    });
-  }
-}
-
-class LocalMovementSystem extends System {
-  public componentsRequired: Set<Function> = new Set([PositionComponent, ClientInputComponent]);
-
-  public update(entities: Set<Entity>): void {
-    entities.forEach((e) => {
-      // TODO: Implement reconciliation.
-      /*
-      1. Check to see if we predicted correctly.
-      2. If not, see the last input the server acknowledged, and grab all the inputs we did afterwards.
-      3. Compute the newX based on the server's new state and all of our inputs since then.
-      */
-      const coms = this.ecs.getComponents(e);
-      const posCom = coms.get(PositionComponent);
-      const clientInputCom = coms.get(ClientInputComponent);
-      const newX = clientInputCom.keys.reduce((acc, [_, key]) => acc + this.keyToMove(key), posCom.x)
-      posCom.x = newX;
-    });
-  }
-
-  private keyToMove(key: string): number {
-    // TODO: Eventually, use the server's logic for this (share).
-    const step = 5; // TODO: Don't dupe constants.
-    if (key === 'd') {
-      return step;
-    } else {
-      return -step;
-    }
-  }
-}
-
-class LocalInputSystem extends System {
-  public componentsRequired = new Set([]);
-  private nextInputSeqNum: number = 0
-
-  constructor(clientInputCom: ClientInputComponent) {
-    super();
-    window.addEventListener("keydown", (e) => {
-      const key = e.key.toLowerCase();
-      if (["a", "d"].includes(key)) {
-        clientInputCom.keys.push([this.nextInputSeqNum, key]);
-        this.nextInputSeqNum++;
-      }
-    });
-  }
-
-  public update(_entities: Set<Entity>): void {}
-}
-
-class NetworkReceiveSystem extends System {
-  public componentsRequired = new Set([ServerIdComponent]);
-  private gsBuf: GameState[] = [];
-
-  constructor(private localEntityId: Entity, conn: WebSocket) {
-    super();
-    conn.onmessage = (msg) => {
-      const newState: GameState = deserializeGameState(msg.data);
-      this.gsBuf.push(newState);
-    };
-  }
-
-  public update(_entities: Set<Entity>): void {
-    const serverStateCom = this.ecs
-      .getComponents(this.localEntityId)
-      .get(ServerStateComponent);
-    const serverEntities = _entities;
-    const ts = Date.now();
-    this.gsBuf.forEach((gs) => {
-      // Update local player.
-      if (!serverStateCom) {
-        this.ecs.addComponent(
-          this.localEntityId,
-          new ServerStateComponent(undefined, undefined, gs.p[1], ts)
-        );
-      } else {
-        serverStateCom.lastX = serverStateCom.newX;
-        serverStateCom.lastXUpdateTs = serverStateCom.newXUpdateTs;
-        serverStateCom.newX = gs.p[1];
-        serverStateCom.newXUpdateTs = ts;
-      }
-
-      // Update remote players.
-      gs.others.forEach((x, serverId) => {
-        const isNewNew = this.findEntityId(serverId, serverEntities) === -1;
-        if (isNewNew) {
-          const newEntity = this.createNewRemotePlayer(x, serverId, ts);
-          serverEntities.add(newEntity);
-        } else {
-          const e = this.findEntityId(serverId, serverEntities);
-          const serverStateCom = this.ecs
-            .getComponents(e)
-            .get(ServerStateComponent);
-          serverStateCom.lastX = serverStateCom.newX;
-          serverStateCom.lastXUpdateTs = serverStateCom.newXUpdateTs;
-          serverStateCom.newX = x;
-          serverStateCom.newXUpdateTs = ts;
-        }
-      });
-    });
-
-    // Remove dead ids.
-    const mostRecentGs = this.gsBuf.pop();
-    if (mostRecentGs) {
-      const deads = this.computeDeadEntities(
-        this.localEntityId,
-        mostRecentGs,
-        serverEntities
-      );
-      deads.forEach((e) => {
-        this.ecs.removeEntity(e);
-      });
-    }
-
-    this.gsBuf = [];
-  }
-
-  private createNewRemotePlayer(x: number, serverId: number, ts: number): Entity {
-    const entityId = this.ecs.addEntity();
-    this.ecs.addComponent(entityId, new ServerStateComponent(undefined, undefined, x, ts));
-    this.ecs.addComponent(entityId, new ServerIdComponent(serverId));
-    return entityId;
-  }
-
-  private findEntityId(serverId: number, entities: Set<Entity>): Entity {
-    for (let e of entities) {
-      const id = this.ecs.getComponents(e).get(ServerIdComponent).id;
-      if (id === serverId) {
-        return e;
-      }
-    }
-    return -1;
-  }
-
-  private computeDeadEntities(
-    localEntityId: Entity,
-    lastGs: GameState,
-    entities: Set<Entity>
-  ): Set<Entity> {
-    entities.delete(localEntityId);
-    lastGs.others.forEach((_v, serverId) => {
-      const e = this.findEntityId(serverId, entities);
-      entities.delete(e);
-    });
-    return entities;
-  }
-}
-
-class NetworkSendSystem extends System {
-  public componentsRequired: Set<Function> = new Set([ClientInputComponent]);
-
-  constructor(private conn: WebSocket) {
-    super();
-  }
-
-  public update(entities: Set<Entity>): void {
-    entities.forEach((e) => {
-      const clientInputCom = this.ecs
-        .getComponents(e)
-        .get(ClientInputComponent);
-      clientInputCom.keys.forEach((key) => {
-        this.conn.send(serializeToJson(key));
-      });
-      clientInputCom.keys = [];
-    });
-  }
-}
-
-class RenderSystem extends System {
-  public componentsRequired = new Set([PositionComponent]);
-
-  constructor(
-    private app: PIXI.Application,
-    private y: number,
-    private circleRadius: number
-  ) {
-    super();
-  }
-
-  public update(entities: Set<Entity>): void {
-    this.app.stage.removeChildren();
-    const gfx = new PIXI.Graphics();
-    entities.forEach((eid) => {
-      const cmps = this.ecs.getComponents(eid);
-      const x = cmps.get(PositionComponent).x;
-      const color = this.chooseColor(cmps);
-      this.drawCircle(gfx, x, color);
-    });
-    this.app.stage.addChild(gfx);
-  }
-
-  private chooseColor(cmps: ComponentContainer): PIXI.ColorSource {
-    if (cmps.has(ServerIdComponent)) {
-      return "blue";
-    } else {
-      return "red";
-    }
-  }
-
-  private drawCircle(
-    gfx: PIXI.Graphics,
-    x: number,
-    color: PIXI.ColorSource
-  ): void {
-    gfx.circle(x, this.y, this.circleRadius).fill({ color });
-  }
-}
+const ticksPerSecond = 5;
+const timeStepMs = 1000 / ticksPerSecond;
 
 const main = async () => {
+  const pixi = await initPixi();
   const conn = connectToServer();
-
-  const ecs = new ECS();
-
-  const id = ecs.addEntity();
-
-  const clientInputCom = new ClientInputComponent([]);
-  ecs.addComponent(id, clientInputCom);
-
-  ecs.addSystem(await createRenderSystem());
-  ecs.addSystem(new LocalInputSystem(clientInputCom));
-  ecs.addSystem(new LocalMovementSystem());
-  ecs.addSystem(new NetworkSendSystem(conn));
-  ecs.addSystem(new NetworkReceiveSystem(id, conn));
-  ecs.addSystem(new RemoteMovementSystem());
-
-  setInterval(() => ecs.update(), timeStepMs);
-};
+  registerKeybinds(conn);
+  const gameState: Map<string, number> = new Map();
+  conn.onmessage = (msg) => {
+    handleMsg(gameState, msg);
+  };
+  setInterval(() => {
+    drawGameState(gameState, pixi);
+  }, timeStepMs)
+}
 
 const connectToServer = (): WebSocket => {
-  const prod = import.meta.env.DEV === false;
-  const gameServerPort = 8080;
+  const gameServerPort = 12345;
   const localUrl = `ws://localhost:${gameServerPort}/ws`;
-  const ngrokHost = "sturgeon-exciting-firmly.ngrok-free.app";
-  const remoteUrl = `wss://${ngrokHost}/ws`;
-  const url = prod ? remoteUrl : localUrl;
-  const socket = new WebSocket(url);
+  const socket = new WebSocket(localUrl);
   socket.onopen = () => console.log("Connected to server");
   socket.onerror = (err) => console.error("WebSocket error:", err);
   return socket;
 };
 
-const createRenderSystem = async (): Promise<RenderSystem> => {
-  const circleRadius: number = 20;
-  const y: number = 20;
-
-  const app = new PIXI.Application();
-  await app.init({ background: "grey", width: 400, height: circleRadius * 2 });
-  document.body.appendChild(app.canvas);
-
-  return new RenderSystem(app, y, circleRadius);
+const initPixi = async (): Promise<PIXI.Application> => {
+  const pixi = new PIXI.Application();
+  await pixi.init({ background: "grey", width: CANVAS_WIDTH, height: CIRCLE_RADIUS * 2 });
+  document.body.appendChild(pixi.canvas);
+  return pixi;
 };
+
+const handleMsg = (gameState: Map<string, number>, msg: MessageEvent<any>) => {
+    const obj = JSON.parse(msg.data)
+    gameState.clear()
+    for (const key in obj) {
+      gameState.set(key, obj[key])
+    }
+}
+
+const drawGameState = (gs: Map<string, number>, pixi: PIXI.Application) => {
+  pixi.stage.removeChildren();
+  gs.forEach((pos, _id) => drawCircle(pos, MY_CIRCLE_COLOR, pixi));
+}
+
+const drawCircle = (x: number, color: PIXI.FillInput, pixi: PIXI.Application) => {
+  const gfx = new PIXI.Graphics();
+  gfx.circle(x, CIRCLE_RADIUS, CIRCLE_RADIUS).fill(color);
+  pixi.stage.addChild(gfx);
+}
+
+const registerKeybinds = (socket: WebSocket) => {
+  window.addEventListener("keydown", (e) => {
+    const key = e.key.toLowerCase();
+    if (["a", "d"].includes(key)) {
+      socket.send(key)
+    }
+  });
+}
 
 main();
