@@ -1,7 +1,1 @@
-export type Position = number;
-export type Entity = number;
-
-export interface GameState {
-  p: [number, Position];
-  others: Map<Entity, Position>;
-}
+// TODO: Define common data types.
