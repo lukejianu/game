@@ -1,11 +1,13 @@
 import { WebSocketServer, WebSocket } from "ws";
 
+import { Id, Position } from "../../common/src/data";
+
 const spawnPoint = 0
 
-export const initServer = (wss: WebSocketServer, gs: Map<number, number>, conns: Array<WebSocket>) => {
+export const initServer = (wss: WebSocketServer, gs: Map<Id, Position>, conns: Map<Id, WebSocket>) => {
   wss.on('connection', (newClient: WebSocket) => {
-    conns.push(newClient)
     const id = genId()
+    conns.set(id, newClient)
     gs.set(id, spawnPoint)
     newClient.on('message', (data) => {
       const msg = data.toString();
@@ -13,11 +15,14 @@ export const initServer = (wss: WebSocketServer, gs: Map<number, number>, conns:
       const newPos = handleInput(currPos, msg);
       gs.set(id, newPos);
     })
-    newClient.on('close', () => gs.delete(id))
+    newClient.on('close', () => {
+      conns.delete(id)
+      gs.delete(id)
+    })
   })
 }
 
-const handleInput = (pos: number, key: string) => {
+const handleInput = (pos: Position, key: string) => {
   const step = 5
   const deltas: Record<string, number> = { a: -step, d: +step };
   const delta = deltas[key];
@@ -27,18 +32,19 @@ const handleInput = (pos: number, key: string) => {
   return pos + delta;
 }
 
-const genId = () => {
+const genId = (): Id => {
   return Math.floor(Math.random() * 1000);
 }
 
-export const runTick = (gs: Map<number, number>, conns: Array<WebSocket>) => {
-  conns.forEach((conn) => {
-    const json = Object.fromEntries(gs)
-    conn.send(JSON.stringify(json))
+export const runTick = (gs: Map<Id, Position>, conns: Map<Id, WebSocket>) => {
+  conns.forEach((conn, id) => {
+    const jsonString = personalizeState(id, gs);
+    conn.send(jsonString)
   })
 }
 
-// TODO: Delete.
-export function add(a: number, b: number) {
-  return a + b;
+// TODO: Implement so that tests pass.
+export const personalizeState = (id: Id, gs: Map<Id, Position>): string => {
+  const json = Object.fromEntries(gs);
+  return JSON.stringify(json);
 }

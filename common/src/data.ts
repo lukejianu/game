@@ -1,1 +1,3 @@
-// TODO: Define common data types.
+
+export type Id = number
+export type Position = number
