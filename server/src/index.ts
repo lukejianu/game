@@ -1,4 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
+import { retrieveCookie, genId } from "../utils"; 
+import { setPlayerCookie } from "../db/playerStore"
 
 const ticksPerSecond = 5;
 const timeStepMs = 1000 / ticksPerSecond;
@@ -14,17 +16,30 @@ const main = () => {
 }
 
 const initServer = (wss: WebSocketServer, gs: Map<number, number>, conns: Array<WebSocket>) => {
-  wss.on('connection', (newClient: WebSocket) => {
+  connectionHandler(wss, gs, conns); 
+}
+
+const connectionHandler = (wss: WebSocketServer, gs: Map<number, number>, conns: Array<WebSocket>) => {
+  wss.on('connection', (newClient: WebSocket, req: any) => {
+    const cookie = retrieveCookie(req.headers.cookie); 
+    // put the cookie in the DB along with the id 
+    setPlayerCookie(cookie); 
+
+    const id = genId(); // replace this with a username from the user. 
+    registerDataHandler(newClient, gs, id); 
     conns.push(newClient)
-    const id = genId()
     gs.set(id, spawnPoint)
-    newClient.on('message', (data) => {
-      const msg = data.toString();
-      const currPos = gs.get(id)!
-      const newPos = handleInput(currPos, msg);
-      gs.set(id, newPos);
-    })
     newClient.on('close', () => gs.delete(id))
+  })
+}
+
+const registerDataHandler = (client: WebSocket, gs: Map<number, number>, id: number) => {
+  client.on('message', (data) => { 
+    // should case on the data. Is it a move message? chat message? etc... 
+    const msg = data.toString();
+    const currPos = gs.get(id)!
+    const newPos = handleInput(currPos, msg);
+    gs.set(id, newPos);
   })
 }
 
@@ -38,9 +53,6 @@ const handleInput = (pos: number, key: string) => {
   return pos + delta;
 }
 
-const genId = () => {
-  return Math.floor(Math.random() * 1000);
-}
 
 const runTick = (gs: Map<number, number>, conns: Array<WebSocket>) => {
   conns.forEach((conn) => {
