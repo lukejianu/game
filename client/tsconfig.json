@@ -13,12 +13,16 @@
     "moduleDetection": "force",
     "noEmit": true,
 
+
     /* Linting */
     "strict": true,
     // "noUnusedLocals": true,
     // "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+
+    /* TODO: Is this good? */
+    "esModuleInterop": true,
   },
   "include": ["src"]
 }
