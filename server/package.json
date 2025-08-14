@@ -3,7 +3,8 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "nodemon src/index.ts"
+    "dev": "nodemon src/index.ts",
+    "test": "jest --config jest.config.js"
   },
   "dependencies": {
     "@types/ws": "^8.18.1",
