@@ -43,8 +43,17 @@ export const runTick = (gs: Map<Id, Position>, conns: Map<Id, WebSocket>) => {
   })
 }
 
-// TODO: Implement so that tests pass.
 export const personalizeState = (id: Id, gs: Map<Id, Position>): string => {
-  const json = Object.fromEntries(gs);
-  return JSON.stringify(json);
+  const personalizedState: { p?: Position; others?: Record<number, Position> } = {};
+  const others: Record<number, Position> = {};  
+
+  for (const [key, value] of gs) {
+    if (key === id) {
+      personalizedState.p = value; 
+    } else {
+      others[key] = value; 
+    }
+  }
+  personalizedState.others = others; 
+  return JSON.stringify(personalizedState); 
 }
