@@ -1,10 +1,12 @@
 import { WebSocketServer, WebSocket } from "ws";
 
-import { Id, Position } from "../../common/src/data";
+import { Id, ClientGameStateMsg, Position } from "../../common/src/data";
+
+type ServerGameState = Map<Id, Position>
 
 const spawnPoint = 0
 
-export const initServer = (wss: WebSocketServer, gs: Map<Id, Position>, conns: Map<Id, WebSocket>) => {
+export const initServer = (wss: WebSocketServer, gs: ServerGameState, conns: Map<Id, WebSocket>) => {
   wss.on('connection', (newClient: WebSocket) => {
     const id = genId()
     conns.set(id, newClient)
@@ -33,18 +35,18 @@ const handleInput = (pos: Position, key: string) => {
 }
 
 const genId = (): Id => {
-  return Math.floor(Math.random() * 1000);
+  return Math.floor(Math.random() * 1000).toString();
 }
 
-export const runTick = (gs: Map<Id, Position>, conns: Map<Id, WebSocket>) => {
+export const runTick = (gs: ServerGameState, conns: Map<Id, WebSocket>) => {
   conns.forEach((conn, id) => {
     const jsonString = personalizeState(id, gs);
     conn.send(jsonString)
   })
 }
 
-export const personalizeState = (id: Id, gs: Map<Id, Position>): string => {
-  const personalizedState: { p: Position; others: Record<number, Position> } = {
+export const personalizeState = (id: Id, gs: ServerGameState): string => {
+  const personalizedState: ClientGameStateMsg = {
     p: 0,
     others: {}
   };

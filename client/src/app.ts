@@ -1,13 +1,16 @@
 import * as PIXI from "pixi.js";
 
-import { Id, Position } from "../../common/src/data";
+import { Id, ClientGameStateMsgSchema, Position, ClientGameStateMsg } from "../../common/src/data";
 
 const CANVAS_WIDTH = 400;
 const CIRCLE_RADIUS = 20;
-const MY_CIRCLE_COLOR = 'red';
-const OTHER_CIRCLE_COLOR = 'blue'; // TODO: Use this.
+const MY_CIRCLE_COLOR = 'blue';
+const OTHER_CIRCLE_COLOR = 'red';
 
-export type ClientGameState = Map<Id, Position>; // TODO: Use this.
+export interface ClientGameState {
+  p: Position
+  others: Map<Id, Position>
+}
 
 export const connectToServer = (): WebSocket => {
   const gameServerPort = 12345;
@@ -42,7 +45,7 @@ export const initPixi = async (): Promise<PIXI.Application> => {
  * this function needs to be called many times in the interval [t - 1, t]. It
  * also needs to know where in the interval its being called (how far through).
  */
-export const processMessages = (gs: ClientGameState, msgQueue: Array<MessageEvent<any>>) => {
+export const processMessages = (gs: ClientGameState, msgQueue: Array<ClientGameStateMsg>) => {
   if (msgQueue.length != 1) {
     console.warn(`Message queue has ${msgQueue.length} elements!`)
   }
@@ -52,17 +55,17 @@ export const processMessages = (gs: ClientGameState, msgQueue: Array<MessageEven
   msgQueue.length = 0
 }
 
-const handleMsg = (gs: ClientGameState, msg: MessageEvent<any>) => {
-    const obj = JSON.parse(msg.data)
-    gs.clear()
-    for (const key in obj) {
-      gs.set(parseInt(key, 10), obj[key])
-    }
+const handleMsg = (gs: ClientGameState, msg: ClientGameStateMsg) => {
+  gs.p = msg.p
+  for (const [id, pos] of Object.entries(msg.others)) {
+    gs.others.set(id, pos)
+  }
 }
 
 export const drawGameState = (gs: ClientGameState, pixi: PIXI.Application) => {
   pixi.stage.removeChildren();
-  gs.forEach((pos, _id) => drawCircle(pos, MY_CIRCLE_COLOR, pixi));
+  drawCircle(gs.p, MY_CIRCLE_COLOR, pixi)
+  gs.others.forEach((pos, _id) => drawCircle(pos, OTHER_CIRCLE_COLOR, pixi));
 }
 
 const drawCircle = (x: number, color: PIXI.FillInput, pixi: PIXI.Application) => {
@@ -85,6 +88,14 @@ export const handleInput = (gs: ClientGameState, key: string) => {
   // TODO: Predict.
 }
 
+export const copyGs = (gs: ClientGameState): ClientGameState => {
+  return { p: gs.p, others: { ...gs.others } };
+}
+
+export const deserializeClientGameStateMsg = (msg: string): ClientGameStateMsg => {
+  const json = JSON.parse(msg);
+  return ClientGameStateMsgSchema.parse(json)
+}
 
 // TODO: Delete.
 export function add(a: number, b: number) {
