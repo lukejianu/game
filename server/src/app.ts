@@ -44,16 +44,18 @@ export const runTick = (gs: Map<Id, Position>, conns: Map<Id, WebSocket>) => {
 }
 
 export const personalizeState = (id: Id, gs: Map<Id, Position>): string => {
-  const personalizedState: { p?: Position; others?: Record<number, Position> } = {};
-  const others: Record<number, Position> = {};  
+  const personalizedState: { p: Position; others: Record<number, Position> } = {
+    p: 0,
+    others: {}
+  };
 
   for (const [key, value] of gs) {
     if (key === id) {
-      personalizedState.p = value; 
+      personalizedState.p = value;
     } else {
-      others[key] = value; 
+      personalizedState.others[key] = value;
     }
   }
-  personalizedState.others = others; 
-  return JSON.stringify(personalizedState); 
+
+  return JSON.stringify(personalizedState);
 }
