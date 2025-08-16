@@ -7,11 +7,10 @@
     "test": "jest --config jest.config.js"
   },
   "dependencies": {
-    "@types/ws": "^8.18.1",
-    "typescript": "^5.8.3",
     "ws": "^8.18.1"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "nodemon": "^3.1.9",
     "ts-node": "^10.9.2"
   }
