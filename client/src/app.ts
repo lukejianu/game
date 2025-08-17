@@ -46,7 +46,7 @@ export const initPixi = async (): Promise<PIXI.Application> => {
  * also needs to know where in the interval its being called (how far through).
  */
 export const processMessages = (gs: ClientGameState, msgQueue: Array<ClientGameStateMsg>) => {
-  if (msgQueue.length != 1) {
+  if (msgQueue.length > 1) {
     console.warn(`Message queue has ${msgQueue.length} elements!`)
   }
   for (const msg of msgQueue) {
