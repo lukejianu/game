@@ -13,3 +13,4 @@ export const ClientGameStateMsgSchema = z.object({
 export type Id = z.infer<typeof IdSchema>;
 export type Position = z.infer<typeof PositionSchema>;
 export type ClientGameStateMsg = z.infer<typeof ClientGameStateMsgSchema>;
+export type ActionSequence = z.infer<typeof ActionSequence>; 

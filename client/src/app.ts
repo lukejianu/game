@@ -1,6 +1,6 @@
 import * as PIXI from "pixi.js";
 
-import { Id, ClientGameStateMsgSchema, Position, ClientGameStateMsg } from "../../common/src/data";
+import { Id, ClientGameStateMsgSchema, Position, ClientGameStateMsg, ActionSequence } from "../../common/src/data";
 
 const CANVAS_WIDTH = 400;
 const CIRCLE_RADIUS = 20;
@@ -12,6 +12,9 @@ export interface ClientGameState {
   others: Map<Id, Position>
   actionSequence: number
 }
+
+// TODO: Find a better location for this. Maybe put it in another module
+const pastClientGameStates: Map<ActionSequence, Position> = new Map(); 
 
 export const connectToServer = (): WebSocket => {
   const gameServerPort = 12345;
@@ -58,7 +61,18 @@ export const processMessages = (gs: ClientGameState, msgQueue: Array<ClientGameS
 }
 
 const handleMsg = (gs: ClientGameState, msg: ClientGameStateMsg) => {
-  gs.p = msg.p
+  // SERVER RECONCILIATION: If theres a mismatch, use the server state. 
+  // Player position at a certain action number from the clients perspective 
+  const playerPosn = pastClientGameStates.get(msg.actionSequence); 
+  // Player position at the same action number from the servers perspective
+  const serverPosn = msg.p; 
+  if (playerPosn !== serverPosn) {
+    console.log("Not good"); 
+    gs.p = msg.p
+    pastClientGameStates.delete(msg.actionSequence); 
+  } else {
+    pastClientGameStates.delete(msg.actionSequence); 
+  }
   for (const [id, pos] of Object.entries(msg.others)) {
     gs.others.set(id, pos)
   }
@@ -99,6 +113,7 @@ export const handleInput = (gs: ClientGameState, key: string) => {
     others: gs.others, 
     actionSequence: gs.actionSequence++, 
   }; 
+  pastClientGameStates.set(newGS.actionSequence, newGS.p); 
   drawGameState(newGS, pixi); 
 }
 
