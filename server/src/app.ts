@@ -1,37 +1,47 @@
 import { WebSocketServer, WebSocket } from "ws";
 
 import { Id, ClientGameStateMsg, Position } from "../../common/src/data";
+import { getTimestamp, updateTimestamp } from "./timestamp";
 
-type ServerGameState = Map<Id, Position>
+export type PlayerState = {
+  p: Position, 
+  actionSequence: number
+}
+
+type ServerGameState = Map<Id, PlayerState>
 
 const spawnPoint = 0
+
 
 export const initServer = (wss: WebSocketServer, gs: ServerGameState, conns: Map<Id, WebSocket>) => {
   wss.on('connection', (newClient: WebSocket) => {
     const id = genId()
     conns.set(id, newClient)
-    gs.set(id, spawnPoint)
+    gs.set(id, {p: spawnPoint, actionSequence: 0})
     newClient.on('message', (data) => {
-      const msg = data.toString();
-      const currPos = gs.get(id)!
-      const newPos = handleInput(currPos, msg);
-      gs.set(id, newPos);
-    })
+      const clientAction = JSON.parse(data.toString());
+      const oldState = gs.get(id)!; 
+      const newPlayerState = handleInput(clientAction, oldState);
+      gs.set(id, newPlayerState);
+    }); 
     newClient.on('close', () => {
       conns.delete(id)
       gs.delete(id)
-    })
+    }); 
   })
 }
 
-const handleInput = (pos: Position, key: string) => {
+const handleInput = (clientAction: any, oldState: PlayerState) => {
   const step = 5
   const deltas: Record<string, number> = { a: -step, d: +step };
-  const delta = deltas[key];
+  const delta = deltas[clientAction.action];
   if (delta === undefined) {
-    throw new Error(`Unsupported input: ${key}`);
+    throw new Error(`Unsupported input: ${clientAction.action}`);
   }
-  return pos + delta;
+  return {
+    p: oldState.p + delta, 
+    actionSequence: clientAction.gamestate.actionSequence,
+  }
 }
 
 const genId = (): Id => {
@@ -39,25 +49,32 @@ const genId = (): Id => {
 }
 
 export const runTick = (gs: ServerGameState, conns: Map<Id, WebSocket>) => {
+  updateTimestamp(); 
   conns.forEach((conn, id) => {
     const jsonString = personalizeState(id, gs);
-    conn.send(jsonString)
+    console.log(jsonString); 
+    conn.send(jsonString); 
   })
 }
 
 export const personalizeState = (id: Id, gs: ServerGameState): string => {
   const personalizedState: ClientGameStateMsg = {
     p: 0,
-    others: {}
+    others: {}, 
+    actionSequence: 0, 
   };
 
+  const gameState = gs.get(id); 
+
+  if (!gameState) { return JSON.stringify(personalizedState) }; 
+
+  personalizedState.p = gameState.p; 
+  personalizedState.actionSequence = gameState.actionSequence; 
+
   for (const [key, value] of gs) {
-    if (key === id) {
-      personalizedState.p = value;
-    } else {
-      personalizedState.others[key] = value;
+    if (key !== id) {
+      personalizedState.others[key] = value.p;
     }
   }
-
   return JSON.stringify(personalizedState);
 }

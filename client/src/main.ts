@@ -10,7 +10,8 @@ const main = async () => {
   // TODO: Don't initialize this until we receive the first message from the server.
   const gs: ClientGameState = {
     p: 0,
-    others: new Map()
+    others: new Map(),
+    actionSequence: 0, 
   }
   const msgQueue: Array<ClientGameStateMsg> = new Array();
   registerKeybinds(gs, conn);
@@ -20,7 +21,7 @@ const main = async () => {
   setInterval(() => {
     processMessages(gs, msgQueue);
     drawGameState(gs, pixi);
-  }, timeStepMs)
+  }, timeStepMs); 
 }
 
 main();

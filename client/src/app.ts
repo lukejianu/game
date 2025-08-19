@@ -10,6 +10,7 @@ const OTHER_CIRCLE_COLOR = 'red';
 export interface ClientGameState {
   p: Position
   others: Map<Id, Position>
+  actionSequence: number
 }
 
 export const connectToServer = (): WebSocket => {
@@ -79,33 +80,33 @@ export const registerKeybinds = (gs: ClientGameState, socket: WebSocket) => {
   window.addEventListener("keydown", (e) => {
     const key = e.key.toLowerCase();
     if (["a", "d"].includes(key)) {
-      socket.send(key)
-      handleInput(gs, key)
+      const moveJSON = {
+        action: key, 
+        gamestate: gs 
+      }; 
+      socket.send(JSON.stringify(moveJSON)); 
+      handleInput(gs, key); 
     }
   });
 }
 
 export const handleInput = (gs: ClientGameState, key: string) => {
-  const step = 10; 
+  const step = 5; 
   const deltas: Record<string, number> = { a: -step, d: +step };
   const delta = deltas[key];
   const newGS = {
     p: gs.p += delta, 
-    others: gs.others
+    others: gs.others, 
+    actionSequence: gs.actionSequence++, 
   }; 
   drawGameState(newGS, pixi); 
 }
 
 export const copyGs = (gs: ClientGameState): ClientGameState => {
-  return { p: gs.p, others: { ...gs.others } };
+  return { p: gs.p, others: { ...gs.others }, actionSequence: gs.actionSequence};
 }
 
 export const deserializeClientGameStateMsg = (msg: string): ClientGameStateMsg => {
   const json = JSON.parse(msg);
   return ClientGameStateMsgSchema.parse(json)
-}
-
-// TODO: Delete.
-export function add(a: number, b: number) {
-  return a + b;
 }
