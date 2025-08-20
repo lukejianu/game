@@ -4,6 +4,9 @@ import { connectToServer, drawGameState, processMessages, initPixi, registerKeyb
 const ticksPerSecond = 5;
 const timeStepMs = 1000 / ticksPerSecond;
 
+const drawPerSecond = 60; 
+const clientDrawMs = 1000 / drawPerSecond; 
+
 const main = async () => {
   const pixi = await initPixi();
   const conn = connectToServer();
@@ -20,8 +23,11 @@ const main = async () => {
   };
   setInterval(() => {
     processMessages(gs, msgQueue);
-    drawGameState(gs, pixi);
   }, timeStepMs); 
+
+  setInterval(() => {
+    drawGameState(gs, pixi);
+  }, clientDrawMs); 
 }
 
 main();

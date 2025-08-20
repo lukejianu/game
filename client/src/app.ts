@@ -25,9 +25,9 @@ export const connectToServer = (): WebSocket => {
   return socket;
 };
 
-export const pixi = new PIXI.Application(); 
 
 export const initPixi = async (): Promise<PIXI.Application> => {
+  const pixi = new PIXI.Application(); 
   await pixi.init({ background: "grey", width: CANVAS_WIDTH, height: CIRCLE_RADIUS * 2 });
   document.body.appendChild(pixi.canvas);
   return pixi;
@@ -114,7 +114,6 @@ export const handleInput = (gs: ClientGameState, key: string) => {
     actionSequence: gs.actionSequence++, 
   }; 
   pastClientGameStates.set(newGS.actionSequence, newGS.p); 
-  drawGameState(newGS, pixi); 
 }
 
 export const copyGs = (gs: ClientGameState): ClientGameState => {
